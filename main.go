@@ -28,6 +28,8 @@ type Config struct {
 	Token string `json:"token"`
 }
 
+var Version = "v0.0.1"
+
 func generateToken() string {
 	b := make([]byte, 16)
 	rand.Read(b)
@@ -52,6 +54,7 @@ type ReportPayload struct {
 	NetTotalTx    uint64  `json:"net_total_tx"`
 	IP            string  `json:"ip"`
 	IPStack       string  `json:"ip_stack"`
+	Version       string  `json:"version"`
 }
 
 type ReportResponse struct {
@@ -209,12 +212,14 @@ func gatherMetrics() (*ReportPayload, error) {
 	ip, ipStack := getLocalIPInfo()
 	payload.IP = ip
 	payload.IPStack = ipStack
+	payload.Version = Version
 
 	return payload, nil
 }
 
 func getLocalIPInfo() (string, string) {
-	var mainIP string
+	var mainIPv4 string
+	var mainIPv6 string
 	hasIPv4 := false
 	hasIPv6 := false
 
@@ -248,25 +253,30 @@ func getLocalIPInfo() (string, string) {
 
 			if ip.To4() != nil {
 				hasIPv4 = true
-				if mainIP == "" {
-					mainIP = ip.String()
+				if mainIPv4 == "" {
+					mainIPv4 = ip.String()
 				}
 			} else {
 				hasIPv6 = true
-				if mainIP == "" {
-					mainIP = ip.String()
+				if mainIPv6 == "" {
+					mainIPv6 = ip.String()
 				}
 			}
 		}
 	}
 
 	ipStack := "unknown"
+	var mainIP string
+
 	if hasIPv4 && hasIPv6 {
 		ipStack = "dual"
+		mainIP = mainIPv4 + ", " + mainIPv6
 	} else if hasIPv4 {
 		ipStack = "ipv4"
+		mainIP = mainIPv4
 	} else if hasIPv6 {
 		ipStack = "ipv6"
+		mainIP = mainIPv6
 	}
 
 	return mainIP, ipStack
