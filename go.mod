@@ -1,4 +1,4 @@
-module github.com/luoxufeiyan/FastProbeServer/client
+module github.com/luoxufeiyan/FastProbeClient
 
 go 1.21
 

@@ -39,7 +39,7 @@ OS="linux"
 
 # Find latest release
 echo "Fetching latest release information..."
-REPO="luoxufeiyan/FastProbeServer"
+REPO="luoxufeiyan/FastProbeClient"
 LATEST_URL=$(curl -s https://api.github.com/repos/$REPO/releases/latest | grep "browser_download_url" | grep "fastprobe-client-$OS-$RELEASE_ARCH" | cut -d '"' -f 4)
 
 if [ -z "$LATEST_URL" ]; then
