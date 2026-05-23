@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -11,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -25,7 +28,14 @@ type Config struct {
 	Token string `json:"token"`
 }
 
+func generateToken() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
 type ReportPayload struct {
+	Hostname      string  `json:"hostname"`
 	OS            string  `json:"os"`
 	KernelVersion string  `json:"kernel_version"`
 	Uptime        uint64  `json:"uptime"`
@@ -61,8 +71,22 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	if config.URL == "" || config.Token == "" {
-		log.Fatalf("URL and Token must be provided in the config file")
+	if config.URL == "" {
+		log.Fatalf("URL must be provided in the config file")
+	}
+
+	if !strings.HasSuffix(config.URL, "/report") {
+		if strings.HasSuffix(config.URL, "/") {
+			config.URL += "report"
+		} else {
+			config.URL += "/report"
+		}
+	}
+
+	if config.Token == "" {
+		config.Token = generateToken()
+		log.Printf("No token found in config. Generated new token: %s", config.Token)
+		saveConfig(*configPath, config)
 	}
 
 	reportInterval := 30 * time.Second
@@ -101,12 +125,21 @@ func loadConfig(path string) (*Config, error) {
 	return config, nil
 }
 
+func saveConfig(path string, config *Config) error {
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
 func gatherMetrics() (*ReportPayload, error) {
 	payload := &ReportPayload{}
 
 	// Host Info
 	hostInfo, err := host.Info()
 	if err == nil {
+		payload.Hostname = hostInfo.Hostname
 		payload.OS = fmt.Sprintf("%s %s", hostInfo.Platform, hostInfo.PlatformVersion)
 		if payload.OS == " " {
 			payload.OS = runtime.GOOS
