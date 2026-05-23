@@ -67,7 +67,14 @@ var lastReportTime time.Time
 
 func main() {
 	configPath := flag.String("config", "/etc/fastprobe-client/config.json", "Path to the configuration file")
+	versionFlag := flag.Bool("version", false, "Print version information")
+	flag.BoolVar(versionFlag, "v", false, "Print version information")
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Printf("FastProbe Client %s\n", Version)
+		os.Exit(0)
+	}
 
 	config, err := loadConfig(*configPath)
 	if err != nil {

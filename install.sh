@@ -36,46 +36,53 @@ case "$ARCH" in
 esac
 
 OS="linux"
-
-# Find latest release
-echo "Fetching latest release information..."
 REPO="luoxufeiyan/FastProbeClient"
-LATEST_URL=$(curl -s https://api.github.com/repos/$REPO/releases/latest | grep "browser_download_url" | grep "fastprobe-client-$OS-$RELEASE_ARCH" | cut -d '"' -f 4)
 
-if [ -z "$LATEST_URL" ]; then
-    # Fallback to constructing URL if github API rate limited or no release yet
-    echo "Could not find latest release via API, assuming v1.0.0 for fallback (you may need to install manually if this fails)."
-    LATEST_URL="https://github.com/$REPO/releases/latest/download/fastprobe-client-$OS-$RELEASE_ARCH"
-fi
+install_or_upgrade() {
+    local mode=$1
+    echo "Fetching latest release information..."
+    LATEST_URL=$(curl -s https://api.github.com/repos/$REPO/releases/latest | grep "browser_download_url" | grep "fastprobe-client-$OS-$RELEASE_ARCH" | cut -d '"' -f 4)
 
-echo "Downloading $LATEST_URL..."
-curl -L -o "$BIN_DIR/$BIN_NAME" "$LATEST_URL"
-chmod +x "$BIN_DIR/$BIN_NAME"
+    if [ -z "$LATEST_URL" ]; then
+        # Fallback to constructing URL if github API rate limited or no release yet
+        echo "Could not find latest release via API, assuming v1.0.0 for fallback (you may need to install manually if this fails)."
+        LATEST_URL="https://github.com/$REPO/releases/latest/download/fastprobe-client-$OS-$RELEASE_ARCH"
+    fi
 
-echo "Binary installed to $BIN_DIR/$BIN_NAME"
+    echo "Downloading $LATEST_URL..."
+    
+    if [ "$mode" == "upgrade" ]; then
+        systemctl stop fastprobe-client || true
+    fi
 
-# Prompt for configuration
-echo "-------------------------------------"
-echo " Configuration"
-echo "-------------------------------------"
-read -p "Enter FastProbe Server URL (e.g., https://status.yourdomain.com/report): " SERVER_URL
-read -p "Enter your Node Token: " NODE_TOKEN
+    curl -L -o "$BIN_DIR/$BIN_NAME" "$LATEST_URL"
+    chmod +x "$BIN_DIR/$BIN_NAME"
 
-mkdir -p "$CONF_DIR"
+    echo "Binary installed to $BIN_DIR/$BIN_NAME"
+    
+    if [ "$mode" == "install" ]; then
+        # Prompt for configuration
+        echo "-------------------------------------"
+        echo " Configuration"
+        echo "-------------------------------------"
+        read -p "Enter FastProbe Server URL (e.g., https://status.yourdomain.com/report): " SERVER_URL
+        read -p "Enter your Node Token: " NODE_TOKEN
 
-# Create config.json
-cat > "$CONF_FILE" <<EOF
+        mkdir -p "$CONF_DIR"
+
+        # Create config.json
+        cat > "$CONF_FILE" <<EOF
 {
   "url": "$SERVER_URL",
   "token": "$NODE_TOKEN"
 }
 EOF
-echo "Configuration saved to $CONF_FILE"
+        echo "Configuration saved to $CONF_FILE"
 
-# Create systemd service
-echo "Setting up systemd service..."
+        # Create systemd service
+        echo "Setting up systemd service..."
 
-cat > "$SERVICE_FILE" <<EOF
+        cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=FastProbe Client Service
 After=network.target
@@ -91,12 +98,72 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-systemctl daemon-reload
-systemctl enable fastprobe-client
-systemctl start fastprobe-client
+        systemctl daemon-reload
+        systemctl enable fastprobe-client
+        systemctl start fastprobe-client
+        echo "====================================="
+        echo " Installation Complete!"
+        echo " FastProbe Client is now running."
+        echo " You can check the status with: systemctl status fastprobe-client"
+        echo "====================================="
+    else
+        systemctl daemon-reload
+        systemctl start fastprobe-client
+        echo "====================================="
+        echo " Upgrade Complete!"
+        echo " FastProbe Client is now running."
+        echo "====================================="
+    fi
+}
 
-echo "====================================="
-echo " Installation Complete!"
-echo " FastProbe Client is now running."
-echo " You can check the status with: systemctl status fastprobe-client"
-echo "====================================="
+uninstall() {
+    echo "Uninstalling FastProbe Client..."
+    systemctl stop fastprobe-client || true
+    systemctl disable fastprobe-client || true
+    rm -f "$SERVICE_FILE"
+    systemctl daemon-reload
+    rm -f "$BIN_DIR/$BIN_NAME"
+    
+    read -p "Do you want to remove the configuration directory ($CONF_DIR)? [y/N]: " REMOVE_CONF
+    if [[ "$REMOVE_CONF" =~ ^[Yy]$ ]]; then
+        rm -rf "$CONF_DIR"
+        echo "Configuration removed."
+    fi
+    echo "====================================="
+    echo " Uninstallation Complete!"
+    echo "====================================="
+}
+
+# Check if already installed
+if [ -f "$BIN_DIR/$BIN_NAME" ]; then
+    VERSION=$("$BIN_DIR/$BIN_NAME" -v 2>/dev/null || echo "Unknown/Old version")
+    echo "FastProbe Client is already installed."
+    echo "Current Version: $VERSION"
+    echo "-------------------------------------"
+    echo "Select an action:"
+    echo "  1) Upgrade to the latest version"
+    echo "  2) Uninstall"
+    echo "  3) Cancel"
+    read -p "Enter your choice [1-3]: " CHOICE
+
+    case "$CHOICE" in
+        1)
+            install_or_upgrade "upgrade"
+            ;;
+        2)
+            uninstall
+            ;;
+        *)
+            echo "Operation cancelled."
+            exit 0
+            ;;
+    esac
+else
+    echo "FastProbe Client is not installed."
+    read -p "Do you want to install it now? [Y/n]: " CHOICE_INSTALL
+    if [[ "$CHOICE_INSTALL" =~ ^[Nn]$ ]]; then
+        echo "Operation cancelled."
+        exit 0
+    fi
+    install_or_upgrade "install"
+fi
